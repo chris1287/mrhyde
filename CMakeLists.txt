@@ -33,12 +33,46 @@ CMAKE_ARGS
 
 link_directories(${CMAKE_BINARY_DIR}/glog-install/lib)
 
+set(SODIUM_REVISION 1.0.18-RELEASE)
+
+message("-- libsodium: ${SODIUM_REVISION}")
+
+ExternalProject_Add(
+  project_libsodium
+
+  GIT_REPOSITORY
+    https://github.com/jedisct1/libsodium.git
+
+  GIT_TAG
+    ${SODIUM_REVISION}
+
+  PREFIX
+    sodium
+
+  SOURCE_DIR
+    libsodium/src/libsodium
+
+  BINARY_DIR
+    libsodium/src/libsodium
+
+  CONFIGURE_COMMAND
+    ./configure --prefix=${CMAKE_BINARY_DIR}/sodium-install/ --disable-shared
+
+  BUILD_COMMAND 
+    make -j4
+
+  INSTALL_COMMAND
+    make install
+)
+
+link_directories(${CMAKE_BINARY_DIR}/sodium-install/lib)
+
 set(SOURCE_FILES
   src/main.cpp
 )
 
 add_executable(${PROJECT_NAME} ${SOURCE_FILES})
-add_dependencies(${PROJECT_NAME} project_glog)
+add_dependencies(${PROJECT_NAME} project_glog project_libsodium)
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 11)
 
@@ -46,7 +80,9 @@ target_compile_options(${PROJECT_NAME} PRIVATE -O2 -Wfatal-errors -Wall -Wpedant
 
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_BINARY_DIR}/glog-install/include)
 
-target_link_libraries(${PROJECT_NAME} LINK_PUBLIC pthread glog)
+target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_BINARY_DIR}/sodium-install/include)
+
+target_link_libraries(${PROJECT_NAME} LINK_PUBLIC pthread glog sodium)
 
 configure_file (src/config.h.in ${CMAKE_BINARY_DIR}/config.h)
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_BINARY_DIR})
