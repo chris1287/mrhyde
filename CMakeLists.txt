@@ -26,9 +26,9 @@ ExternalProject_Add(
   SOURCE_DIR
     glog/src/glog
 
-CMAKE_ARGS
-  -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/glog-install
-  ${CMAKE_EXTRA_ARGS}
+  CMAKE_ARGS
+    -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/glog-install
+    ${CMAKE_EXTRA_ARGS}
 )
 
 link_directories(${CMAKE_BINARY_DIR}/glog-install/lib)
@@ -67,12 +67,38 @@ ExternalProject_Add(
 
 link_directories(${CMAKE_BINARY_DIR}/sodium-install/lib)
 
+set(GFLAGS_REVISION v2.2.2)
+
+message("-- gflags: ${GFLAGS_REVISION}")
+
+ExternalProject_Add(
+  project_gflags
+
+  GIT_REPOSITORY
+    https://github.com/gflags/gflags.git
+
+  GIT_TAG
+    ${GFLAGS_REVISION}
+
+  PREFIX
+    gflags
+
+  SOURCE_DIR
+    gflags/src/gflags
+  
+  CMAKE_ARGS
+    -DCMAKE_INSTALL_PREFIX=${CMAKE_BINARY_DIR}/gflags-install
+    ${CMAKE_EXTRA_ARGS}
+)
+
+link_directories(${CMAKE_BINARY_DIR}/gflags-install/lib)
+
 set(SOURCE_FILES
   src/main.cpp
 )
 
 add_executable(${PROJECT_NAME} ${SOURCE_FILES})
-add_dependencies(${PROJECT_NAME} project_glog project_libsodium)
+add_dependencies(${PROJECT_NAME} project_glog project_libsodium project_gflags)
 
 set_property(TARGET ${PROJECT_NAME} PROPERTY CXX_STANDARD 11)
 
@@ -82,7 +108,9 @@ target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_BINARY_DIR}/glog-inst
 
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_BINARY_DIR}/sodium-install/include)
 
-target_link_libraries(${PROJECT_NAME} LINK_PUBLIC pthread glog sodium)
+target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_BINARY_DIR}/gflags-install/include)
+
+target_link_libraries(${PROJECT_NAME} LINK_PUBLIC pthread glog sodium gflags pthread)
 
 configure_file (src/config.h.in ${CMAKE_BINARY_DIR}/config.h)
 target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_BINARY_DIR})
