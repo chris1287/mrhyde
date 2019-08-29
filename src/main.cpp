@@ -11,10 +11,10 @@ DEFINE_string(out, "", "output file");
 DEFINE_string(password, "", "encryption password");
 
 int encrypt(std::string filename_in, std::string filename_out, std::string password) {
-    unsigned char salt[crypto_pwhash_SALTBYTES] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    unsigned char salt[crypto_pwhash_SALTBYTES];
     unsigned char key[crypto_secretstream_xchacha20poly1305_KEYBYTES];
 
-    // randombytes_buf(salt, sizeof(salt));
+    randombytes_buf(salt, sizeof(salt));
 
     if(crypto_pwhash(
         key,
@@ -28,12 +28,6 @@ int encrypt(std::string filename_in, std::string filename_out, std::string passw
             LOG(ERROR) << "cannot derive password";
             return EXIT_FAILURE;
     }
-
-    VLOG(1) << "password derived";
-    for(int i = 0; i < crypto_secretstream_xchacha20poly1305_KEYBYTES; ++i) {
-        printf("%02X", key[i]);
-    }
-    printf("\n");
 
     crypto_secretstream_xchacha20poly1305_state state;
     unsigned char header[crypto_secretstream_xchacha20poly1305_HEADERBYTES];
@@ -53,6 +47,13 @@ int encrypt(std::string filename_in, std::string filename_out, std::string passw
     auto out = fopen(filename_out.c_str(), "wb");
     if(!out) {
         LOG(ERROR) << "cannot open file " << filename_out;
+        fclose(out);
+        return EXIT_FAILURE;
+    }
+
+    if(fwrite(salt, 1, crypto_pwhash_SALTBYTES, out) != crypto_pwhash_SALTBYTES) {
+        LOG(ERROR) << "cannot write salt to file";
+        fclose(in);
         fclose(out);
         return EXIT_FAILURE;
     }
@@ -121,29 +122,8 @@ int encrypt(std::string filename_in, std::string filename_out, std::string passw
 }
 
 int decrypt(std::string filename_in, std::string filename_out, std::string password) {
-    unsigned char salt[crypto_pwhash_SALTBYTES] = {0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0};
+    unsigned char salt[crypto_pwhash_SALTBYTES];
     unsigned char key[crypto_secretstream_xchacha20poly1305_KEYBYTES];
-
-    // randombytes_buf(salt, sizeof(salt));
-
-    if(crypto_pwhash(
-        key,
-        sizeof(key),
-        password.c_str(),
-        password.size(),
-        salt,
-        crypto_pwhash_OPSLIMIT_INTERACTIVE,
-        crypto_pwhash_MEMLIMIT_INTERACTIVE,
-        crypto_pwhash_ALG_DEFAULT) != 0) {
-            LOG(ERROR) << "cannot derive password";
-            return EXIT_FAILURE;
-    }
-
-    VLOG(1) << "password derived";
-    for(int i = 0; i < crypto_secretstream_xchacha20poly1305_KEYBYTES; ++i) {
-        printf("%02X", key[i]);
-    }
-    printf("\n");
 
     auto in = fopen(filename_in.c_str(), "rb");
     if(!in) {
@@ -158,12 +138,32 @@ int decrypt(std::string filename_in, std::string filename_out, std::string passw
         return EXIT_FAILURE;
     }
 
+    if(fread(salt, 1, crypto_pwhash_SALTBYTES, in) != crypto_pwhash_SALTBYTES) {
+        LOG(ERROR) << "cannot read salt from file";
+        fclose(in);
+        fclose(out);
+        return EXIT_FAILURE;
+    }
+
     unsigned char header[crypto_secretstream_xchacha20poly1305_HEADERBYTES];
     if(fread(header, 1, crypto_secretstream_xchacha20poly1305_HEADERBYTES, in) != crypto_secretstream_xchacha20poly1305_HEADERBYTES) {
         LOG(ERROR) << "cannot read encryption header from file";
         fclose(in);
         fclose(out);
         return EXIT_FAILURE;
+    }
+
+    if(crypto_pwhash(
+        key,
+        sizeof(key),
+        password.c_str(),
+        password.size(),
+        salt,
+        crypto_pwhash_OPSLIMIT_INTERACTIVE,
+        crypto_pwhash_MEMLIMIT_INTERACTIVE,
+        crypto_pwhash_ALG_DEFAULT) != 0) {
+            LOG(ERROR) << "cannot derive password";
+            return EXIT_FAILURE;
     }
 
     crypto_secretstream_xchacha20poly1305_state state;
