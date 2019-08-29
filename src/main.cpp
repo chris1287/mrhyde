@@ -22,8 +22,8 @@ int encrypt(std::string filename_in, std::string filename_out, std::string passw
         password.c_str(),
         password.size(),
         salt,
-        crypto_pwhash_OPSLIMIT_INTERACTIVE,
-        crypto_pwhash_MEMLIMIT_INTERACTIVE,
+        crypto_pwhash_OPSLIMIT_SENSITIVE,
+        crypto_pwhash_MEMLIMIT_SENSITIVE,
         crypto_pwhash_ALG_DEFAULT) != 0) {
             LOG(ERROR) << "cannot derive password";
             return EXIT_FAILURE;
@@ -159,8 +159,8 @@ int decrypt(std::string filename_in, std::string filename_out, std::string passw
         password.c_str(),
         password.size(),
         salt,
-        crypto_pwhash_OPSLIMIT_INTERACTIVE,
-        crypto_pwhash_MEMLIMIT_INTERACTIVE,
+        crypto_pwhash_OPSLIMIT_SENSITIVE,
+        crypto_pwhash_MEMLIMIT_SENSITIVE,
         crypto_pwhash_ALG_DEFAULT) != 0) {
             LOG(ERROR) << "cannot derive password";
             return EXIT_FAILURE;
