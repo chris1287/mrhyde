@@ -236,9 +236,9 @@ int decrypt(std::string filename_in, std::string filename_out, std::string passw
 int main(int argc, char *argv[]) {
     google::InitGoogleLogging(argv[0]);
 
-    std::string usage = "encrypt or decrypt a file. Usage:\n";
-    usage += argv[0] + std::string(" --encrypt file.txt --out file.txt.enc\n");
-    usage += argv[0] + std::string(" --decrypt file.txt.enc --out file.txt\n");
+    std::string usage = "encrypt or decrypt a file with a password. Usage:\n";
+    usage += argv[0] + std::string(" -encrypt file.txt -out file.txt.enc -password secret\n");
+    usage += argv[0] + std::string(" -decrypt file.txt.enc -out file.txt -password secret\n");
     gflags::SetUsageMessage(usage);
 
     gflags::ParseCommandLineFlags(&argc, &argv, true);
