@@ -5,6 +5,7 @@
 #include <sodium.h>
 #include <iostream>
 #include <getopt.h>
+#include <termios.h>
 #include <unistd.h>
 #include "config.h"
 
@@ -231,11 +232,53 @@ int decrypt(std::string filename_in, std::string filename_out, std::string passw
     return EXIT_SUCCESS;
 }
 
+char *read_password(size_t const password_size) {
+    struct termios oflags, nflags;
+    auto password = static_cast<char *>(sodium_malloc(password_size));
+    if(!password) {
+        spdlog::error("memory error");
+        exit(1);
+    }
+    printf("enter password: ");
+    fflush(stdout);
+    tcgetattr(fileno(stdin), &oflags);
+    nflags = oflags;
+    nflags.c_lflag &= ~ECHO;
+    nflags.c_lflag |= ECHONL;
+    if(tcsetattr(fileno(stdin), TCSANOW, &nflags)) {
+        spdlog::error("tcsetattr set error");
+        sodium_free(password);
+        exit(1);
+    }
+    size_t idx = 0;
+    do {
+        if(read(fileno(stdin), &password[idx], sizeof(char)) != 1) {
+            spdlog::error("read password error");
+            sodium_free(password);
+            exit(1);
+        }
+        if(password[idx] == '\n') {
+            password[idx] = '\0';
+            break;
+        }
+        idx++;
+    } while(idx < password_size-1);
+    password[password_size-1] = '\0';
+
+    if(tcsetattr(fileno(stdin), TCSANOW, &oflags) != 0) {
+        spdlog::error("tcsetattr reset error");
+        sodium_free(password);
+        exit(1);
+    }
+
+    return password;
+}
+
 void help(std::string const &name) {
     std::cerr
     << "Usage:" << std::endl
-    << name << " --encrypt file.dec.bin --out file.enc.bin --password password" << std::endl
-    << name << " --decrypt file.enc.bin --out file.dec.bin --password password" << std::endl
+    << name << " --encrypt file.dec.bin --out file.enc.bin" << std::endl
+    << name << " --decrypt file.enc.bin --out file.dec.bin" << std::endl
     << std::endl;
 }
 
@@ -254,7 +297,6 @@ int main(int argc, char *argv[]) {
         {"encrypt",     required_argument, 0, 'e'},
         {"decrypt",     required_argument, 0, 'd'},
         {"out",         required_argument, 0, 'o'},
-        {"password",    required_argument, 0, 'p'},
         {0,             0,                 0, 0}
     };
 
@@ -262,7 +304,6 @@ int main(int argc, char *argv[]) {
     bool do_decrypt = false;
     std::string file_in = "input.bin";
     std::string file_out = "output.bin";
-    std::string password = "";
 
     int idx = 0;
     while(true) {
@@ -290,10 +331,6 @@ int main(int argc, char *argv[]) {
                 file_out = optarg;
                 break;
             }
-            case 'p': {
-                password = optarg;
-                break;
-            }
             default: {
                 help(argv[0]);
                 exit(1);
@@ -307,17 +344,19 @@ int main(int argc, char *argv[]) {
         exit(1);
     }
 
-    if(password.empty()) {
-        password = getpass("enter password: ");
-    }
+    auto password = read_password(64);
+
+    int res = 0;
 
     if(do_encrypt) {
         spdlog::info("encrypt file {} to {}", file_in, file_out);
-        return encrypt(file_in, file_out, password);
+        res = encrypt(file_in, file_out, password);
     } else if(do_decrypt) {
         spdlog::info("decrypt file {} to {}", file_in, file_out);
-        return decrypt(file_in, file_out, password);
+        res = decrypt(file_in, file_out, password);
     }
 
-    return EXIT_SUCCESS;
+    sodium_free(password);
+
+    return res;
 }
