@@ -1,14 +1,12 @@
 #include <cstdio>
 #include <cstdlib>
-#include <glog/logging.h>
-#include <gflags/gflags.h>
+#include <spdlog/spdlog.h>
+#include <spdlog/cfg/env.h>
 #include <sodium.h>
+#include <iostream>
+#include <getopt.h>
+#include <unistd.h>
 #include "config.h"
-
-DEFINE_string(encrypt, "", "encrypt file");
-DEFINE_string(decrypt, "", "decrypt file");
-DEFINE_string(out, "", "output file");
-DEFINE_string(password, "", "encryption password");
 
 int encrypt(std::string filename_in, std::string filename_out, std::string password) {
     unsigned char salt[crypto_pwhash_SALTBYTES];
@@ -25,41 +23,41 @@ int encrypt(std::string filename_in, std::string filename_out, std::string passw
         crypto_pwhash_OPSLIMIT_SENSITIVE,
         crypto_pwhash_MEMLIMIT_SENSITIVE,
         crypto_pwhash_ALG_DEFAULT) != 0) {
-            LOG(ERROR) << "cannot derive password";
+            spdlog::error("cannot derive password");
             return EXIT_FAILURE;
     }
 
     crypto_secretstream_xchacha20poly1305_state state;
     unsigned char header[crypto_secretstream_xchacha20poly1305_HEADERBYTES];
     if(crypto_secretstream_xchacha20poly1305_init_push(&state, header, key) != 0) {
-        LOG(ERROR) << "cannot initialize encryption function";
+        spdlog::error("cannot initialize encryption function");
         return EXIT_FAILURE;
     };
 
-    VLOG(1) << "encryption function initialized";
+    spdlog::debug("encryption function initialized");
 
     auto in = fopen(filename_in.c_str(), "rb");
     if(!in) {
-        LOG(ERROR) << "cannot open file " << filename_in;
+        spdlog::error("cannot open file {}", filename_in);
         return EXIT_FAILURE;
     }
 
     auto out = fopen(filename_out.c_str(), "wb");
     if(!out) {
-        LOG(ERROR) << "cannot open file " << filename_out;
+        spdlog::error("cannot open file {}", filename_out);
         fclose(out);
         return EXIT_FAILURE;
     }
 
     if(fwrite(salt, 1, crypto_pwhash_SALTBYTES, out) != crypto_pwhash_SALTBYTES) {
-        LOG(ERROR) << "cannot write salt to file";
+        spdlog::error("cannot write salt to file");
         fclose(in);
         fclose(out);
         return EXIT_FAILURE;
     }
 
     if(fwrite(header, 1, crypto_secretstream_xchacha20poly1305_HEADERBYTES, out) != crypto_secretstream_xchacha20poly1305_HEADERBYTES) {
-        LOG(ERROR) << "cannot write encryption header to file";
+        spdlog::error("cannot write encryption header to file");
         fclose(in);
         fclose(out);
         return EXIT_FAILURE;
@@ -70,10 +68,10 @@ int encrypt(std::string filename_in, std::string filename_out, std::string passw
     size_t nin = 0;
     bool done = false;
     while(!done) {
-        VLOG(1) << "read chunk";
+        spdlog::debug("read chunk");
         nin = fread(clear, 1, sizeof(clear), in);
         if(nin < 0) {
-            LOG(ERROR) << "read chunk failed";
+            spdlog::error("read chunk failed");
             fclose(in);
             fclose(out);
             return EXIT_FAILURE;
@@ -81,7 +79,7 @@ int encrypt(std::string filename_in, std::string filename_out, std::string passw
 
         int tag = 0;
         if(nin != sizeof(clear)) {
-            VLOG(1) << "file read completed";
+            spdlog::debug("file read completed");
             tag = crypto_secretstream_xchacha20poly1305_TAG_FINAL;
             done = true;
         }
@@ -97,7 +95,7 @@ int encrypt(std::string filename_in, std::string filename_out, std::string passw
             NULL, 
             0, 
             tag) != 0) {
-            LOG(ERROR) << "chunk encryption failed";
+            spdlog::error("chunk encryption failed");
             fclose(in);
             fclose(out);
             return EXIT_FAILURE;
@@ -105,18 +103,18 @@ int encrypt(std::string filename_in, std::string filename_out, std::string passw
 
         auto nout  = fwrite(enc, 1, enc_len, out);
         if(nout != enc_len) {
-            LOG(ERROR) << "cannot write encrypted chunk";
+            spdlog::error("cannot write encrypted chunk");
             fclose(in);
             fclose(out);
             return EXIT_FAILURE;
         }
 
-        VLOG(1) << "encrypted chunk written: in=" << nin << ", out=" << nout << ", desired_out=" << enc_len;
+        spdlog::debug("encrypted chunk written: in={}, out={}, desired_out={}", std::to_string(nin), std::to_string(nout), std::to_string(enc_len));
     }
     fclose(in);
     fclose(out);
 
-    LOG(INFO) << "encryption completed";
+    spdlog::info("encryption completed");
 
     return EXIT_SUCCESS;
 }
@@ -127,19 +125,19 @@ int decrypt(std::string filename_in, std::string filename_out, std::string passw
 
     auto in = fopen(filename_in.c_str(), "rb");
     if(!in) {
-        LOG(ERROR) << "cannot open file " << filename_in;
+        spdlog::error("cannot open file {}", filename_in);
         return EXIT_FAILURE;
     }
 
     auto out = fopen(filename_out.c_str(), "wb");
     if(!out) {
-        LOG(ERROR) << "cannot open file " << filename_out;
+        spdlog::error("cannot open file {}", filename_out);
         fclose(out);
         return EXIT_FAILURE;
     }
 
     if(fread(salt, 1, crypto_pwhash_SALTBYTES, in) != crypto_pwhash_SALTBYTES) {
-        LOG(ERROR) << "cannot read salt from file";
+        spdlog::error("cannot read salt from file");
         fclose(in);
         fclose(out);
         return EXIT_FAILURE;
@@ -147,7 +145,7 @@ int decrypt(std::string filename_in, std::string filename_out, std::string passw
 
     unsigned char header[crypto_secretstream_xchacha20poly1305_HEADERBYTES];
     if(fread(header, 1, crypto_secretstream_xchacha20poly1305_HEADERBYTES, in) != crypto_secretstream_xchacha20poly1305_HEADERBYTES) {
-        LOG(ERROR) << "cannot read encryption header from file";
+        spdlog::error("cannot read encryption header from file");
         fclose(in);
         fclose(out);
         return EXIT_FAILURE;
@@ -162,34 +160,34 @@ int decrypt(std::string filename_in, std::string filename_out, std::string passw
         crypto_pwhash_OPSLIMIT_SENSITIVE,
         crypto_pwhash_MEMLIMIT_SENSITIVE,
         crypto_pwhash_ALG_DEFAULT) != 0) {
-            LOG(ERROR) << "cannot derive password";
+            spdlog::error("cannot derive password");
             return EXIT_FAILURE;
     }
 
     crypto_secretstream_xchacha20poly1305_state state;
     if(crypto_secretstream_xchacha20poly1305_init_pull(&state, header, key) != 0) {
-        LOG(ERROR) << "cannot initialize decryption function";
+        spdlog::error("cannot initialize decryption function");
         return EXIT_FAILURE;
     };
 
-    VLOG(1) << "decryption function initialized";
+    spdlog::debug("decryption function initialized");
 
     unsigned char clear[BUFSIZ];
     unsigned char enc[sizeof(clear) + crypto_secretstream_xchacha20poly1305_ABYTES];
     size_t nin = 0;
     bool done = false;
     while(!done) {
-        VLOG(1) << "read chunk";
+        spdlog::debug("read chunk");
         nin = fread(enc, sizeof(unsigned char), sizeof(enc), in);
         if(nin < 0) {
-            LOG(ERROR) << "read chunk failed";
+            spdlog::error("read chunk failed");
             fclose(in);
             fclose(out);
             return EXIT_FAILURE;
         }
 
         if(nin != sizeof(enc)) {
-            VLOG(1) << "file read completed, read " << nin << " bytes";
+            spdlog::debug("file read completed, read {} bytes", std::to_string(nin));
         }
 
         memset(clear, 0, sizeof(clear));
@@ -205,7 +203,7 @@ int decrypt(std::string filename_in, std::string filename_out, std::string passw
             nin,
             NULL, 
             0) != 0) {
-            LOG(ERROR) << "chunk decryption failed";
+            spdlog::error("chunk decryption failed");
             fclose(in);
             fclose(out);
             return EXIT_FAILURE;
@@ -213,13 +211,13 @@ int decrypt(std::string filename_in, std::string filename_out, std::string passw
 
         auto nout  = fwrite(clear, sizeof(unsigned char), dec_len, out);
         if(nout != dec_len) {
-            LOG(ERROR) << "cannot write decrypted chunk";
+            spdlog::error("cannot write decrypted chunk");
             fclose(in);
             fclose(out);
             return EXIT_FAILURE;
         }
 
-        VLOG(1) << "decrypted chunk written: in=" << nin << ", out=" << nout << ", desired_out=" << dec_len;
+        spdlog::debug("decrypted chunk written: in={}, out={}, desired_out={}", std::to_string(nin), std::to_string(nout), std::to_string(dec_len));
 
         if(nin < sizeof(enc) || tag == crypto_secretstream_xchacha20poly1305_TAG_FINAL) {
             done = true;
@@ -228,35 +226,97 @@ int decrypt(std::string filename_in, std::string filename_out, std::string passw
     fclose(in);
     fclose(out);
 
-    LOG(INFO) << "decryption completed";
+    spdlog::info("decryption completed");
 
     return EXIT_SUCCESS;
 }
 
+void help(std::string const &name) {
+    std::cerr
+    << "Usage:" << std::endl
+    << name << " --encrypt file.dec.bin --out file.enc.bin --password password" << std::endl
+    << name << " --decrypt file.enc.bin --out file.dec.bin --password password" << std::endl
+    << std::endl;
+}
+
 int main(int argc, char *argv[]) {
-    google::InitGoogleLogging(argv[0]);
-
-    std::string usage = "encrypt or decrypt a file with a password. Usage:\n";
-    usage += argv[0] + std::string(" -encrypt file.txt -out file.txt.enc -password secret\n");
-    usage += argv[0] + std::string(" -decrypt file.txt.enc -out file.txt -password secret\n");
-    gflags::SetUsageMessage(usage);
-
-    gflags::ParseCommandLineFlags(&argc, &argv, true);
-    gflags::ShutDownCommandLineFlags();
+    spdlog::cfg::load_env_levels();
 
     if(sodium_init() < 0) {
-        LOG(ERROR) << "cannot initialize libsodium";
+        spdlog::error("cannot initialize libsodium");
         return EXIT_FAILURE;
+    } else {
+        spdlog::debug("libsodium has been initialized");
     }
 
-    if(!FLAGS_encrypt.empty() && ! FLAGS_out.empty()) {
-        LOG(INFO) << "encrypt file " << FLAGS_encrypt << " to " << FLAGS_out;
-        return encrypt(FLAGS_encrypt, FLAGS_out, FLAGS_password);
+    struct option long_options[] = {
+        {"help",        no_argument,       0, 'h'},
+        {"encrypt",     required_argument, 0, 'e'},
+        {"decrypt",     required_argument, 0, 'd'},
+        {"out",         required_argument, 0, 'o'},
+        {"password",    required_argument, 0, 'p'},
+        {0,             0,                 0, 0}
+    };
+
+    bool do_encrypt = false;
+    bool do_decrypt = false;
+    std::string file_in = "input.bin";
+    std::string file_out = "output.bin";
+    std::string password = "";
+
+    int idx = 0;
+    while(true) {
+        int x = getopt_long(argc, argv, "he:d:o:p:", long_options, &idx);
+        if(x < 0) {
+            break;
+        }
+
+        switch(x) {
+            case 'h': {
+                help(argv[0]);
+                exit(0);
+            }
+            case 'e': {
+                do_encrypt = true;
+                file_in = optarg;
+                break;
+            }
+            case 'd': {
+                do_decrypt = true;
+                file_in = optarg;
+                break;
+            }
+            case 'o': {
+                file_out = optarg;
+                break;
+            }
+            case 'p': {
+                password = optarg;
+                break;
+            }
+            default: {
+                help(argv[0]);
+                exit(1);
+            }
+        }
     }
 
-    if(!FLAGS_decrypt.empty() && ! FLAGS_out.empty()) {
-        LOG(INFO) << "decrypt file " << FLAGS_decrypt << " to " << FLAGS_out;
-        return decrypt(FLAGS_decrypt, FLAGS_out, FLAGS_password);
+    if((do_decrypt && do_encrypt) || (!do_encrypt && !do_decrypt)) {
+        spdlog::error("either encrypt or decrypt option must be used");
+        help(argv[0]);
+        exit(1);
+    }
+
+    if(password.empty()) {
+        password = getpass("enter password: ");
+    }
+
+    if(do_encrypt) {
+        spdlog::info("encrypt file {} to {}", file_in, file_out);
+        return encrypt(file_in, file_out, password);
+    } else if(do_decrypt) {
+        spdlog::info("decrypt file {} to {}", file_in, file_out);
+        return decrypt(file_in, file_out, password);
     }
 
     return EXIT_SUCCESS;

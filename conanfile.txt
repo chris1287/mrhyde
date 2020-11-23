@@ -1,0 +1,9 @@
+[requires]
+libsodium/1.0.18
+spdlog/1.8.1
+
+[generators]
+cmake
+
+[options]
+*:shared=False
