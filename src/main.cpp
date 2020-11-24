@@ -338,7 +338,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    if((do_decrypt && do_encrypt) || (!do_encrypt && !do_decrypt)) {
+    if(!(do_encrypt ^ do_decrypt)) {
         spdlog::error("either encrypt or decrypt option must be used");
         help(argv[0]);
         exit(1);
